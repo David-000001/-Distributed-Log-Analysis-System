@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Distributed Log Analysis System</title>
+    <style>
+      /* ── Reset & base ───────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+            --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --accent:   #58a6ff;
+      --green:    #3fb950;
+      --yellow:   #d29922;
+              --red:      #f85149;
+              --orange:   #e3b341;
+              --text:     #e6edf3;
+              --muted:    #8b949e;
+      --radius:   8px;
+}
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.15rem; font-weight: 600; color: var(--text); }
+    header span { font-size: 0.8rem; color: var(--muted); background: var(--border); padding: 2px 8px; border-radius: 20px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; display: grid; gap: 20px; }
+
+    /* ── Cards ──────────────────────────────────────────── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .card h2 { font-size: 0.9rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+
+    /* ── Controls ───────────────────────────────────────── */
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    label { font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+    input[type=number], input[type=text] {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: 6px 10px; font-size: 0.875rem; width: 90px;
+}
+    input[type=text] { width: 220px; }
+    button {
+            cursor: pointer; border: none; border-radius: 6px; padding: 7px 16px;
+      font-size: 0.875rem; font-weight: 600; transition: opacity .15s;
+}
+    button:hover { opacity: .85; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary  { background: var(--accent); color: #0d1117; }
+    .btn-success  { background: var(--green);  color: #0d1117; }
+    .btn-danger   { background: var(--red);    color: #fff; }
+    .btn-ghost    { background: var(--border); color: var(--text); }
+
+    /* ── Textarea ───────────────────────────────────────── */
+    textarea {
+            width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.78rem; padding: 10px; resize: vertical; min-height: 160px; line-height: 1.55;
+}
+
+    /* ── Stats grid ─────────────────────────────────────── */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .stat-box { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; text-align: center; }
+    .stat-box .val { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .stat-box .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+          .val-blue   { color: var(--accent); }
+    .val-red    { color: var(--red); }
+    .val-yellow { color: var(--yellow); }
+    .val-green  { color: var(--green); }
+
+    /* ── Bar chart ──────────────────────────────────────── */
+    .bar-section { margin-bottom: 18px; }
+    .bar-section h3 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.82rem; }
+    .bar-row .bar-label { width: 80px; text-align: right; color: var(--muted); font-size: 0.78rem; }
+    .bar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 14px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 4px; transition: width .4s ease; }
+    .bar-count { width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+    .CRITICAL { background: #b22a2a; }
+          .ERROR    { background: var(--red); }
+    .WARNING  { background: var(--yellow); }
+    .INFO     { background: var(--green); }
+    .DEBUG    { background: var(--muted); }
+
+    /* ── Alerts ─────────────────────────────────────────── */
+    .alert-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .alert-list li {
+            background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.3);
+      border-radius: 6px; padding: 10px 14px; font-size: 0.85rem; line-height: 1.5;
+}
+    .alert-list li::before { content: "⚠ "; color: var(--orange); }
+    .no-alerts { color: var(--green); font-size: 0.875rem; }
+
+    /* ── Log table ──────────────────────────────────────── */
+    .log-scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    thead th { position: sticky; top: 0; background: var(--surface); padding: 8px 10px; text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    tbody tr:nth-child(even) { background: rgba(255,255,255,.02); }
+    tbody td { padding: 6px 10px; border-bottom: 1px solid rgba(48,54,61,.5); vertical-align: middle; }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+    .badge-CRITICAL { background: rgba(178,42,42,.25); color: #ff6b6b; }
+        .badge-ERROR    { background: rgba(248,81,73,.2);  color: var(--red); }
+    .badge-WARNING  { background: rgba(210,153,34,.2); color: var(--orange); }
+    .badge-INFO     { background: rgba(63,185,80,.15); color: var(--green); }
+    .badge-DEBUG    { background: rgba(139,148,158,.15); color: var(--muted); }
+    .ts { color: var(--muted); font-family: monospace; }
+    .trace { color: var(--muted); font-family: monospace; font-size: 0.7rem; }
+
+    /* ── Misc ───────────────────────────────────────────── */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    #status-bar { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+    a { color: var(--accent); text-decoration: none; }
+    footer { text-align: center; padding: 24px; color: var(--muted); font-size: 0.78rem; border-top: 1px solid var(--border); margin-top: 20px; }
+  </style>
+    </head>
+    <body>
+
+    <header>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <h1>Distributed Log Analysis System</h1>
+      <span>Netlify Edition</span>
+    </header>
+
+    <main>
+
+      <!-- ── Controls card ────────────────────────────────── -->
+      <div class="card">
+        <h2>Generate &amp; Analyse</h2>
+        <div class="controls">
+          <label>Entries to generate
+        <input type="number" id="gen-count" value="80" min="10" max="500" />
+          </label>
+          <label>Nodes (comma-sep)
+            <input type="text" id="gen-nodes" value="node-1,node-2,node-3" />
+          </label>
+          <label>Services (comma-sep)
+            <input type="text" id="gen-services" value="auth-service,payment-service,api-gateway" />
+          </label>
+          <button class="btn-success" id="btn-generate">&#9654; Run Demo</button>
+      <button class="btn-primary" id="btn-analyze" disabled>&#128269; Analyse Pasted Logs</button>
+          <button class="btn-ghost"  id="btn-clear">Clear</button>
+        </div>
+        <p id="status-bar" style="margin-top:10px;"></p>
+      </div>
+
+      <!-- ── Paste / raw input ────────────────────────────── -->
+      <div class="card">
+        <h2>Raw Log Input  <span style="font-size:.75rem;font-weight:400;text-transform:none;color:var(--muted);">(paste JSONL or plain-text lines — click Analyse)</span></h2>
+    <textarea id="raw-input" spellcheck="false" placeholder='Paste log entries here as JSONL (one JSON object per line) or plain text lines like:
+[ERROR] Connection refused to 10.0.3.5
+[WARNING] Memory usage at 87%
+2024-01-15 14:32:01 INFO Request handled in 234ms'></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px;">
+      <button class="btn-primary" id="btn-analyze2">&#128269; Analyse Input</button>
+    </div>
+  </div>
+
+  <!-- ── Results ──────────────────────────────────────── -->
+  <div id="results" class="hidden">
+
+    <!-- summary stats -->
+    <div class="card">
+      <h2>Summary</h2>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="val val-blue"  id="s-total">—</div><div class="lbl">Total Entries</div></div>
+        <div class="stat-box"><div class="val val-red"   id="s-errate">—</div><div class="lbl">Error Rate</div></div>
+        <div class="stat-box"><div class="val val-yellow" id="s-avg">—</div><div class="lbl">Avg Response (ms)</div></div>
+        <div class="stat-box"><div class="val val-green"  id="s-nodes">—</div><div class="lbl">Active Nodes</div></div>
+      </div>
+
+      <div class="two-col">
+        <!-- level bars -->
+        <div class="bar-section">
+          <h3>By Level</h3>
+          <div id="level-bars"></div>
+        </div>
+        <!-- node bars -->
+        <div class="bar-section">
+          <h3>By Node</h3>
+          <div id="node-bars"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- alerts -->
+    <div class="card">
+      <h2>Anomaly Alerts</h2>
+      <div id="alerts-container"></div>
+    </div>
+
+    <!-- top errors -->
+    <div class="card" id="top-errors-card">
+      <h2>Top Error Messages</h2>
+      <div id="top-errors-container"></div>
+    </div>
+
+    <!-- log table -->
+    <div class="card">
+      <h2>Log Entries</h2>
+      <div class="log-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Node</th>
+              <th>Service</th>
+              <th>Level</th>
+              <th>Message</th>
+              <th>Trace</th>
+            </tr>
+          </thead>
+          <tbody id="log-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /results -->
+</main>
+
+<footer>
+  Distributed Log Analysis System &mdash;
+  <a href="https://github.com/David-000001/-Distributed-Log-Analysis-System" target="_blank">GitHub</a>
+  &bull; Hosted on <a href="https://netlify.com" target="_blank">Netlify</a>
+</footer>
+
+<script>
+// ── Utility ────────────────────────────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+
+function setStatus(msg, spin = false) {
+    $('status-bar').innerHTML = spin
+    ? `<span class="spinner"></span> ${msg}`
+    : msg;
+}
+
+function fmtTs(iso) {
+    try { return new Date(iso).toISOString().replace('T',' ').slice(0,19); }
+        catch { return iso; }
+}
+
+// ── Parse plain-text log lines into entry objects ──────────────────────────
+function parsePlainLine(line, idx) {
+    line = line.trim();
+  if (!line) return null;
+  // Try JSON first
+  if (line.startsWith('{')) {
+    try { return JSON.parse(line); } catch {}
+}
+  // [LEVEL] message
+  let m = line.match(/^\[?(DEBUG|INFO|WARNING|ERROR|CRITICAL)\]?\s+(.*)/i);
+  if (m) return { timestamp: new Date().toISOString(), node_id: 'input', service: 'manual', level: m[1].toUpperCase(), message: m[2], trace_id: idx.toString(16).padStart(6,'0') };
+  // timestamp LEVEL message
+  m = line.match(/^[\d\-T: ]+\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+(.*)/i);
+  if (m) return { timestamp: new Date().toISOString(), node_id: 'input', service: 'manual', level: m[1].toUpperCase(), message: m[2], trace_id: idx.toString(16).padStart(6,'0') };
+  // fallback INFO
+  return { timestamp: new Date().toISOString(), node_id: 'input', service: 'manual', level: 'INFO', message: line, trace_id: idx.toString(16).padStart(6,'0') };
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function renderResults(entries, data) {
+    const { stats, alerts } = data;
+
+  $('results').classList.remove('hidden');
+
+  // Summary stats
+  $('s-total').textContent  = stats.total ?? 0;
+  $('s-errate').textContent = stats.error_rate != null ? (stats.error_rate * 100).toFixed(1) + '%' : '—';
+  $('s-avg').textContent    = stats.avg_response_ms != null ? stats.avg_response_ms : '—';
+  $('s-nodes').textContent  = stats.by_node ? Object.keys(stats.by_node).length : '—';
+
+  // Level bars
+  const lvlOrder = ['CRITICAL','ERROR','WARNING','INFO','DEBUG'];
+  const lvlEl = $('level-bars');
+  lvlEl.innerHTML = '';
+      const maxLvl = Math.max(1, ...lvlOrder.map(l => stats.by_level?.[l] ?? 0));
+  lvlOrder.forEach(lvl => {
+    const n = stats.by_level?.[lvl] ?? 0;
+    if (!n) return;
+    const pct = (n / maxLvl * 100).toFixed(1);
+    lvlEl.insertAdjacentHTML('beforeend', `
+      <div class="bar-row">
+        <span class="bar-label">${lvl}</span>
+        <div class="bar-track"><div class="bar-fill ${lvl}" style="width:${pct}%"></div></div>
+        <span class="bar-count">${n}</span>
+      </div>`);
+});
+
+  // Node bars
+  const nodeEl = $('node-bars');
+  nodeEl.innerHTML = '';
+  if (stats.by_node) {
+    const maxNode = Math.max(1, ...Object.values(stats.by_node));
+    Object.entries(stats.by_node).forEach(([node, n]) => {
+      const pct = (n / maxNode * 100).toFixed(1);
+      nodeEl.insertAdjacentHTML('beforeend', `
+        <div class="bar-row">
+          <span class="bar-label">${node}</span>
+          <div class="bar-track"><div class="bar-fill INFO" style="width:${pct}%"></div></div>
+          <span class="bar-count">${n}</span>
+        </div>`);
+});
+}
+
+  // Alerts
+  const alertsEl = $('alerts-container');
+  if (alerts && alerts.length) {
+    alertsEl.innerHTML = '<ul class="alert-list">' + alerts.map(a => `<li>${escHtml(a)}</li>`).join('') + '</ul>';
+} else {
+    alertsEl.innerHTML = '<p class="no-alerts">&#10003; No anomalies detected.</p>';
+}
+
+  // Top errors
+  if (stats.top_errors && stats.top_errors.length) {
+    $('top-errors-card').classList.remove('hidden');
+    $('top-errors-container').innerHTML = stats.top_errors
+      .map(([msg, cnt]) => `<div class="bar-row"><span style="color:var(--red);font-weight:600;width:36px">${cnt}x</span><span style="font-family:monospace;font-size:.8rem">${escHtml(msg)}</span></div>`)
+      .join('');
+} else {
+    $('top-errors-card').classList.add('hidden');
+}
+
+  // Log table (cap at 300 rows for perf)
+  const tbody = $('log-table-body');
+  const display = entries.slice(0, 300);
+  tbody.innerHTML = display.map(e => `
+    <tr>
+      <td class="ts">${fmtTs(e.timestamp)}</td>
+      <td>${escHtml(e.node_id ?? '')}</td>
+      <td>${escHtml(e.service  ?? '')}</td>
+      <td><span class="badge badge-${e.level}">${e.level}</span></td>
+      <td>${escHtml((e.message ?? '').slice(0, 120))}</td>
+      <td class="trace">${escHtml(e.trace_id ?? '')}</td>
+    </tr>`).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── API calls ──────────────────────────────────────────────────────────────
+
+async function callGenerate() {
+  const count    = parseInt($('gen-count').value) || 80;
+  const nodes    = $('gen-nodes').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const services = $('gen-services').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count, nodes, services }),
+});
+  if (!res.ok) throw new Error(`Generate failed: ${res.status}`);
+  const data = await res.json();
+  return data.entries ?? [];
+}
+
+async function callAnalyze(entries) {
+  const res = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries }),
+});
+  if (!res.ok) throw new Error(`Analyze failed: ${res.status}`);
+  return res.json();
+}
+
+// ── Button handlers ────────────────────────────────────────────────────────
+
+$('btn-generate').addEventListener('click', async () => {
+  $('btn-generate').disabled = true;
+  setStatus('Generating synthetic logs…', true);
+  try {
+    const entries = await callGenerate();
+    // Put entries into the textarea as JSONL
+    $('raw-input').value = entries.map(e => JSON.stringify(e)).join('\n');
+    setStatus('Analysing…', true);
+    const result = await callAnalyze(entries);
+    renderResults(entries, result);
+    setStatus(`&#10003; Demo complete — ${entries.length} entries analysed.`);
+} catch (err) {
+    setStatus('&#9888; ' + err.message);
+} finally {
+    $('btn-generate').disabled = false;
+}
+});
+
+async function analyzeInput() {
+  const raw = $('raw-input').value.trim();
+  if (!raw) { setStatus('&#9888; Paste some log entries first.'); return; }
+  const entries = raw.split('\n').map((l, i) => parsePlainLine(l, i)).filter(Boolean);
+  if (!entries.length) { setStatus('&#9888; Could not parse any log entries.'); return; }
+  setStatus(`Analysing ${entries.length} entries…`, true);
+  $('btn-analyze').disabled  = true;
+  $('btn-analyze2').disabled = true;
+  try {
+    const result = await callAnalyze(entries);
+    renderResults(entries, result);
+    setStatus(`&#10003; Analysed ${entries.length} entries.`);
+    $('btn-analyze').disabled = false;
+} catch (err) {
+    setStatus('&#9888; ' + err.message);
+} finally {
+    $('btn-analyze').disabled  = false;
+    $('btn-analyze2').disabled = false;
+}
+}
+
+$('btn-analyze').addEventListener('click',  analyzeInput);
+$('btn-analyze2').addEventListener('click', analyzeInput);
+
+$('raw-input').addEventListener('input', () => {
+  $('btn-analyze').disabled = $('raw-input').value.trim() === '';
+});
+
+$('btn-clear').addEventListener('click', () => {
+  $('raw-input').value = '';
+  $('btn-analyze').disabled = true;
+  $('results').classList.add('hidden');
+  setStatus('');
+});
+</script>
+</body>
+</html>
