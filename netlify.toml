@@ -1,0 +1,46 @@
+# netlify.toml - Netlify configuration for Distributed Log Analysis System
+
+[build]
+  # Static site lives at the repo root; index.html is the entry point
+    publish = "."
+      # No build command needed (pure static + pre-built functions)
+        command = ""
+
+        # Netlify Functions (Python serverless)
+        [functions]
+          directory = "netlify/functions"
+
+          # Redirect API calls to the serverless function
+          [[redirects]]
+            from = "/api/analyze"
+              to   = "/.netlify/functions/analyze"
+                status = 200
+
+                [[redirects]]
+                  from = "/api/generate"
+                    to   = "/.netlify/functions/generate"
+                      status = 200
+
+                      # SPA fallback — serve index.html for all unmatched routes
+                      [[redirects]]
+                        from   = "/*"
+                          to     = "/index.html"
+                            status = 200
+
+                            # Security / performance headers
+                            [[headers]]
+                              for = "/*"
+                                [headers.values]
+                                    X-Frame-Options        = "DENY"
+                                        X-Content-Type-Options = "nosniff"
+                                            Referrer-Policy        = "strict-origin-when-cross-origin"
+
+                                            [[headers]]
+                                              for = "/*.js"
+                                                [headers.values]
+                                                    Cache-Control = "public, max-age=31536000, immutable"
+
+                                                    [[headers]]
+                                                      for = "/*.css"
+                                                        [headers.values]
+                                                            Cache-Control = "public, max-age=31536000, immutable"
